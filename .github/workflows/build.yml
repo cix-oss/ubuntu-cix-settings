@@ -23,7 +23,8 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            build-essential dpkg-dev debhelper lintian
+            build-essential devscripts equivs lintian
+          mk-build-deps --install --tool='apt-get -y --no-install-recommends' debian/control
 
       - name: Build package
         run: dpkg-buildpackage -us -uc -b
@@ -31,7 +32,7 @@ jobs:
       - name: Collect artifacts
         run: |
           mkdir -p output
-          cp "${GITHUB_WORKSPACE}/.."/*.deb output/
+          find .. -maxdepth 1 -name '*.deb' -exec cp {} output/ \;
 
       - name: Run lintian
         run: lintian --info --display-level warning output/*.deb || true
