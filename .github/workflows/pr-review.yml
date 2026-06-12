@@ -13,11 +13,8 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: qodo-ai/pr-agent-action@main
         env:
-          OPENAI.KEY: ${{ secrets.DASHSCOPE_API_KEY }}
-          OPENAI.API_BASE: "https://coding.dashscope.aliyuncs.com/v1"
-          CONFIG.MODEL: "qwen3.7-plus"
+          OPENAI_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          args: "review"
