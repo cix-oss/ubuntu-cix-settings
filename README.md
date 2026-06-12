@@ -115,3 +115,4 @@ When submitting changes:
 ## License
 
 This project is licensed under the **GNU General Public License v2.0 or later** (GPL-2+). See [`LICENSE`](LICENSE) for the full text.
+
