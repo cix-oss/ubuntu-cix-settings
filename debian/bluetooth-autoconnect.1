@@ -1,0 +1,20 @@
+.TH BLUETOOTH-AUTOCONNECT 1 "June 2026" "ubuntu-cix-settings" "User Commands"
+.SH NAME
+bluetooth-autoconnect \- connect trusted Bluetooth devices
+.SH SYNOPSIS
+.B bluetooth-autoconnect
+.RI [ options ]
+.SH DESCRIPTION
+.B bluetooth-autoconnect
+connects trusted Bluetooth devices through BlueZ. It can run once or stay in
+daemon mode to reconnect devices when adapters or device state changes.
+.SH OPTIONS
+.TP
+.B \-d, \-\-daemon
+Monitor Bluetooth adapters and reconnect trusted devices automatically.
+.TP
+.B \-v, \-\-verbose
+Print verbose status messages.
+.TP
+.B \-h, \-\-help
+Show command usage.

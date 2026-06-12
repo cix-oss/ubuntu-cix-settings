@@ -1,0 +1,11 @@
+grub.d-oem/* etc/default/grub.d/
+environment.d/* etc/environment.d/
+sleep.conf.d/00-disable.conf etc/systemd/sleep.conf.d/
+system-sleep/cix-pcie-aspm-policy usr/lib/systemd/system-sleep/
+modprobe.d/blacklist-panthor.conf etc/modprobe.d/
+modprobe.d/blacklist-opi-launcher.conf etc/modprobe.d/
+systemd/pcie-aspm-fix.service usr/lib/systemd/system/
+systemd/bluetooth.service.d/* usr/lib/systemd/system/bluetooth.service.d/
+bluetooth-autoconnect/bluetooth-autoconnect usr/bin/
+bluetooth-autoconnect/bluetooth-autoconnect.service usr/lib/systemd/system/
+bluetooth-autoconnect/pulseaudio-bluetooth-autoconnect.service usr/lib/systemd/user/

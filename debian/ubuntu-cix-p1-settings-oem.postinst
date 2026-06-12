@@ -1,0 +1,17 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+	configure)
+		if [ -f /etc/default/grub.d/kdump-tools.cfg ]; then
+			sed -i "s|4G-32G:512M|4G-32G:128M|g" /etc/default/grub.d/kdump-tools.cfg
+		fi
+		if [ -e /boot/grub/grub.cfg ] && which update-grub >/dev/null 2>&1; then
+			update-grub || true
+		fi
+		;;
+esac
+
+#DEBHELPER#
+
+exit 0

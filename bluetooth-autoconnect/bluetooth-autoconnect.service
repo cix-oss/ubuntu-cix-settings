@@ -1,0 +1,17 @@
+[Unit]
+Description=Bluetooth autoconnect service
+Documentation=man:bluetooth-autoconnect(1)
+After=bluetooth.target
+Wants=bluetooth.target
+
+[Service]
+Type=simple
+ExecStartPre=/bin/sleep 3
+ExecStart=/usr/bin/bluetooth-autoconnect -d -v
+Restart=on-failure
+RestartSec=5
+StartLimitBurst=3
+StartLimitInterval=30
+
+[Install]
+WantedBy=multi-user.target

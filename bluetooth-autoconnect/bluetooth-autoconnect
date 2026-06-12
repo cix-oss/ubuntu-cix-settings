@@ -1,0 +1,582 @@
+#!/usr/bin/env python3
+
+import getopt
+import os
+import signal
+import sys
+
+import dbus
+
+from dbus.mainloop.glib import DBusGMainLoop
+from functools import partial
+from gi.repository import GLib
+from xml.etree import ElementTree
+
+
+SCRIPT_NAME = os.path.basename(sys.argv[0])
+
+# 重试配置：最大重试次数，指数退避基准秒数
+MAX_RETRIES = 3
+RETRY_BASE_DELAY = 2
+
+# 防抖配置 (毫秒)
+RECONNECT_DEBOUNCE_MS = 1500   # 断链重连防抖
+ADAPTER_POWER_DEBOUNCE_MS = 3000  # 适配器上电防抖
+SLEEP_WAKE_DEBOUNCE_MS = 8000    # 睡眠唤醒防抖 (必须足够长)
+
+# 全局状态
+debounce_source_id = None
+adapter_debounce_source_id = None
+sleep_wake_pending = False
+connect_in_progress = False  # 防止重入
+
+
+def debounced_connect_all():
+    """防抖的全量扫描连接：多个设备同时断链时只触发一次"""
+    global debounce_source_id, connect_in_progress
+    debounce_source_id = None
+    if connect_in_progress:
+        if verbose:
+            print('debounce: connection already in progress, skipping', flush=True)
+        return False
+    if verbose:
+        print('debounce triggered: connecting all devices', flush=True)
+    connect_devices_for_all_adapters()
+    return False  # 只执行一次
+
+
+def debounced_adapter_connect(adapter_path):
+    """适配器上电防抖：短时间内多次上电只触发一次"""
+    global adapter_debounce_source_id, connect_in_progress
+    adapter_debounce_source_id = None
+    if connect_in_progress:
+        if verbose:
+            print(f'adapter {adapter_path}: connection already in progress, skipping', flush=True)
+        return False
+    if verbose:
+        print(f'adapter {adapter_path} debounce triggered: connecting devices', flush=True)
+    connect_devices_for_adapter(adapter_path)
+    return False
+
+
+def dbus_get_child_object_paths(object_path):
+    object_paths = []
+    obj = bus.get_object('org.bluez', object_path, introspect=False)
+    xml_string = obj.Introspect(dbus_interface='org.freedesktop.DBus.Introspectable')
+
+    if object_path == '/':
+        object_path = ''
+
+    for child in ElementTree.fromstring(xml_string):
+        if child.tag == 'node':
+            object_paths.append(object_path + '/' + child.attrib['name'])
+
+    return object_paths
+
+
+def get_device_type(props):
+    """根据设备 UUID 判断设备类型"""
+    uuids = props.get('UUIDs', [])
+    uuid_set = set(uuids)
+
+    # HID 设备 (鼠标、键盘) - 最高优先级
+    hid_uuids = {
+        '00001124-0000-1000-8000-00805f9b34fb',  # HID
+        '00001812-0000-1000-8000-00805f9b34fb',  # HOGP (BLE HID)
+    }
+    if uuid_set & hid_uuids:
+        return 'hid'
+
+    # 音频设备 - 次优先级
+    audio_uuids = {
+        '0000110b-0000-1000-8000-00805f9b34fb',  # A2DP
+        '0000110e-0000-1000-8000-00805f9b34fb',  # AVRCP
+        '00001108-0000-1000-8000-00805f9b34fb',  # HSP
+        '0000111e-0000-1000-8000-00805f9b34fb',  # HFP
+    }
+    if uuid_set & audio_uuids:
+        return 'audio'
+
+    # 手机/通用设备 - 第三优先级
+    phone_uuids = {
+        '00001105-0000-1000-8000-00805f9b34fb',  # OBEX Object Push
+        '00001106-0000-1000-8000-00805f9b34fb',  # OBEX File Transfer
+        '00001116-0000-1000-8000-00805f9b34fb',  # HDP
+        '0000110a-0000-1000-8000-00805f9b34fb',  # A2DP Source
+        '0000111f-0000-1000-8000-00805f9b34fb',  # Handsfree Audio Gateway
+    }
+    if uuid_set & phone_uuids:
+        return 'phone'
+
+    return 'other'
+
+
+def get_device_priority(props):
+    """根据设备类型获取优先级"""
+    device_type = get_device_type(props)
+    priority_map = {'hid': 0, 'audio': 1, 'phone': 2, 'other': 3}
+    return priority_map.get(device_type, 3)
+
+
+def process_adapter_devices(adapter_path, device_paths, retry_count=0):
+    """
+    处理指定适配器的设备连接（不做锁检查，由调用方处理）
+    使用串行连接 + 按优先级排序
+    """
+    if verbose:
+        print(f'processing {len(device_paths)} devices on {adapter_path} (retry {retry_count})', flush=True)
+
+    # 读取所有设备属性并按优先级排序
+    devices_with_props = []
+    for device_path in device_paths:
+        try:
+            obj = bus.get_object('org.bluez', device_path)
+            props = obj.GetAll(
+                    'org.bluez.Device1',
+                    dbus_interface='org.freedesktop.DBus.Properties')
+            device_name = props.get('Name', 'unknown')
+            device_trusted = props.get('Trusted', False)
+            device_connected = props.get('Connected', False)
+            device_type = get_device_type(props)
+            if verbose:
+                print(f'  found device: {device_name} ({device_path})', flush=True)
+                print(f'    type={device_type}, trusted={device_trusted}, connected={device_connected}', flush=True)
+            devices_with_props.append((device_path, props))
+        except dbus.exceptions.DBusException as e:
+            print(f'error reading properties for device {device_path}: {e.get_dbus_message()}', file=sys.stderr, flush=True)
+
+    # 按优先级排序 (HID 优先，然后音频，然后手机，然后其他)
+    devices_with_props.sort(key=lambda x: get_device_priority(x[1]))
+
+    if verbose:
+        print(f'total {len(devices_with_props)} devices to process', flush=True)
+
+    # 如果没有需要处理的设备，立即释放锁
+    if not devices_with_props:
+        global connect_in_progress
+        connect_in_progress = False
+        return
+
+    # 管理待处理连接
+    def add_pending_connection(device_path):
+        if not daemon:
+            pending_connections.add(device_path)
+
+    def remove_pending_connection(device_path):
+        if not daemon:
+            pending_connections.discard(device_path)
+
+    # 串行连接：一次一个设备
+    device_index = 0
+    failed_devices = []
+
+    def connect_next_device():
+        nonlocal device_index, failed_devices
+
+        if device_index >= len(devices_with_props):
+            # 所有设备尝试完毕
+            if failed_devices and retry_count < MAX_RETRIES:
+                delay = RETRY_BASE_DELAY * (2 ** retry_count)
+                if verbose:
+                    print(f'{len(failed_devices)} devices failed to connect, retrying in {delay} seconds...', flush=True)
+                GLib.timeout_add_seconds(delay, lambda: process_adapter_devices(adapter_path, device_paths, retry_count + 1))
+            else:
+                # 没有失败设备或达到最大重试次数，释放锁
+                global connect_in_progress
+                connect_in_progress = False
+                if verbose:
+                    print('all connection attempts completed', flush=True)
+                if not daemon and len(pending_connections) == 0:
+                    loop.quit()
+            return
+
+        device_path, props = devices_with_props[device_index]
+        device_index += 1
+
+        if props.get('Connected', False):
+            # 已经连接，跳过
+            GLib.timeout_add(100, connect_next_device)
+        elif not props.get('Trusted', False):
+            # 不可信，跳过
+            GLib.timeout_add(100, connect_next_device)
+        else:
+            device_name = props.get('Name', 'unknown')
+            print(f'connecting to device: {device_name}', flush=True)
+            add_pending_connection(device_path)
+
+            def reply_handler(dp, name):
+                print(f'successfully connected to {name}', flush=True)
+                remove_pending_connection(dp)
+                # 延迟 1 秒后连接下一个设备
+                GLib.timeout_add_seconds(1, connect_next_device)
+
+            def error_handler(dp, name, e):
+                error_msg = e.get_dbus_message()
+                print(f'error connecting to {name}: {error_msg}', file=sys.stderr, flush=True)
+                remove_pending_connection(dp)
+                failed_devices.append(dp)
+                # 延迟 1 秒后尝试下一个设备
+                GLib.timeout_add_seconds(1, connect_next_device)
+
+            try:
+                obj = bus.get_object('org.bluez', device_path)
+                obj.Connect(
+                        dbus_interface='org.bluez.Device1',
+                        reply_handler=partial(reply_handler, device_path, device_name),
+                        error_handler=partial(error_handler, device_path, device_name))
+            except dbus.exceptions.DBusException as e:
+                error_handler(device_path, device_name, e)
+
+    # 启动第一个连接
+    connect_next_device()
+
+
+def connect_devices_for_adapter(adapter_path, retry_count=0):
+    """
+    为指定适配器连接设备（独立入口，有自己的锁检查）
+    """
+    global connect_in_progress
+    if connect_in_progress and retry_count == 0:
+        if verbose:
+            print(f'connection already in progress, skipping request for {adapter_path}', flush=True)
+        return
+
+    # 标记连接开始（只对初始调用，不是重试）
+    if retry_count == 0:
+        connect_in_progress = True
+
+    if verbose:
+        print(f'scanning for devices on {adapter_path} (retry attempt {retry_count})', flush=True)
+
+    try:
+        adapter_obj = bus.get_object('org.bluez', adapter_path)
+        adapter_props = adapter_obj.GetAll(
+                'org.bluez.Adapter1',
+                dbus_interface='org.freedesktop.DBus.Properties')
+
+        if not adapter_props.get('Powered', False):
+            if verbose:
+                print(f'adapter {adapter_path} is not powered, skipping device connection', flush=True)
+            connect_in_progress = False
+            return
+    except dbus.exceptions.DBusException as e:
+        print(f'error reading properties for adapter {adapter_path}: {e.get_dbus_message()}', file=sys.stderr, flush=True)
+        connect_in_progress = False
+        return
+
+    # 获取设备列表
+    device_paths = dbus_get_child_object_paths(adapter_path)
+    if not device_paths:
+        if verbose:
+            print(f'no devices found on adapter {adapter_path}', flush=True)
+        connect_in_progress = False
+        return
+
+    process_adapter_devices(adapter_path, device_paths, retry_count)
+
+
+def connect_devices_for_all_adapters(retry_count=0):
+    """连接所有已上电适配器上的设备"""
+    global connect_in_progress
+    if connect_in_progress and retry_count == 0:
+        if verbose:
+            print('connection already in progress, skipping request', flush=True)
+        return
+
+    # 标记连接开始（只对初始调用，不是重试）
+    if retry_count == 0:
+        connect_in_progress = True
+
+    if verbose:
+        print('scanning for adapters...', flush=True)
+
+    try:
+        # 获取适配器列表
+        adapter_paths = dbus_get_child_object_paths('/org/bluez')
+    except dbus.exceptions.DBusException as e:
+        print(f'error getting adapter paths: {e.get_dbus_message()}', file=sys.stderr, flush=True)
+        if retry_count < MAX_RETRIES:
+            delay = RETRY_BASE_DELAY * (2 ** retry_count)
+            print(f'retrying in {delay} seconds...', file=sys.stderr, flush=True)
+            GLib.timeout_add_seconds(delay, lambda: connect_devices_for_all_adapters(retry_count + 1))
+        else:
+            connect_in_progress = False
+        return
+
+    if not adapter_paths:
+        if verbose:
+            print(f'no adapters found (attempt {retry_count + 1}/{MAX_RETRIES + 1})', flush=True)
+        if retry_count < MAX_RETRIES:
+            delay = RETRY_BASE_DELAY * (2 ** retry_count)
+            if verbose:
+                print(f'retrying in {delay} seconds...', flush=True)
+            GLib.timeout_add_seconds(delay, lambda: connect_devices_for_all_adapters(retry_count + 1))
+        else:
+            connect_in_progress = False  # 没有更多重试，释放锁
+        return
+
+    # 过滤掉 test 等假适配器
+    valid_adapters = [p for p in adapter_paths if '/test' not in p]
+
+    has_powered_adapter = False
+    devices_found = False
+    for adapter_path in valid_adapters:
+        if verbose:
+            print(f'found adapter {adapter_path}', flush=True)
+        try:
+            # 读取适配器属性
+            obj = bus.get_object('org.bluez', adapter_path)
+            props = obj.GetAll(
+                    'org.bluez.Adapter1',
+                    dbus_interface='org.freedesktop.DBus.Properties')
+
+            # 只处理已上电的适配器
+            if props.get('Powered', False):
+                if verbose:
+                    print(f'adapter {adapter_path} is powered on', flush=True)
+                has_powered_adapter = True
+                # 直接处理设备，不调用 connect_devices_for_adapter 避免锁冲突
+                device_paths = dbus_get_child_object_paths(adapter_path)
+                if device_paths:
+                    devices_found = True
+                    # 为这个适配器处理设备
+                    process_adapter_devices(adapter_path, device_paths, retry_count)
+            else:
+                if verbose:
+                    print(f'adapter {adapter_path} is not powered on', flush=True)
+        except dbus.exceptions.DBusException as e:
+            print(f'error reading properties for adapter {adapter_path}: {e.get_dbus_message()}', file=sys.stderr, flush=True)
+
+    # 如果没有找到设备或没有上电的适配器，立即释放锁
+    if not devices_found or not has_powered_adapter:
+        if retry_count < MAX_RETRIES:
+            delay = RETRY_BASE_DELAY * (2 ** retry_count)
+            if verbose:
+                print(f'no devices to connect, retrying in {delay} seconds...', flush=True)
+            GLib.timeout_add_seconds(delay, lambda: connect_devices_for_all_adapters(retry_count + 1))
+        else:
+            connect_in_progress = False
+            if verbose:
+                print('no devices to connect, done', flush=True)
+
+
+def properties_changed_handler(interface_name, changed_properties, invalidated_properties, path):
+    """监听蓝牙适配器上电事件和设备断链事件"""
+    if interface_name == 'org.bluez.Adapter1' and changed_properties.get('Powered', False):
+        if verbose:
+            print(f'adapter {path} has powered on, starting {ADAPTER_POWER_DEBOUNCE_MS}ms debounce...', flush=True)
+        # 适配器上电防抖：3秒内多次上电只触发一次
+        global adapter_debounce_source_id
+        if adapter_debounce_source_id is not None:
+            GLib.source_remove(adapter_debounce_source_id)
+        adapter_debounce_source_id = GLib.timeout_add(ADAPTER_POWER_DEBOUNCE_MS, lambda: debounced_adapter_connect(path))
+    elif interface_name == 'org.bluez.Device1':
+        # 监听设备断开事件：Connected 从 true 变为 false
+        if 'Connected' in changed_properties and not changed_properties['Connected']:
+            # 如果睡眠唤醒挂起中，忽略断链事件（唤醒后会统一重连）
+            global sleep_wake_pending
+            if sleep_wake_pending:
+                if verbose:
+                    print('sleep/wake pending, ignoring device disconnect event', flush=True)
+                return
+            try:
+                # 检查设备是否可信（只重连可信设备）
+                obj = bus.get_object('org.bluez', path)
+                props = obj.GetAll(
+                        'org.bluez.Device1',
+                        dbus_interface='org.freedesktop.DBus.Properties')
+                if props.get('Trusted', False):
+                    device_name = props.get('Name', 'unknown')
+                    if verbose:
+                        print(f'device {path} ({device_name}) disconnected, scheduling reconnect...', flush=True)
+                    # 使用防抖：1.5 秒内多个设备断开只触发一次全量扫描
+                    global debounce_source_id
+                    if debounce_source_id is not None:
+                        GLib.source_remove(debounce_source_id)
+                    debounce_source_id = GLib.timeout_add(RECONNECT_DEBOUNCE_MS, debounced_connect_all)
+            except dbus.exceptions.DBusException as e:
+                if verbose:
+                    print(f'error checking device {path} after disconnect: {e.get_dbus_message()}', file=sys.stderr, flush=True)
+
+
+def handle_sleep(*args):
+    """处理系统睡眠唤醒事件"""
+    global sleep_wake_pending
+    if args:
+        # args[0] == True: 即将进入睡眠
+        # args[0] == False: 从睡眠唤醒
+        if not args[0]:
+            if verbose:
+                print(f'system woke from sleep, starting {SLEEP_WAKE_DEBOUNCE_MS}ms protection window...', flush=True)
+            # 标记睡眠唤醒进行中：在此期间忽略所有设备断链事件
+            sleep_wake_pending = True
+
+            # 取消所有待执行的定时器，防止重复连接
+            global debounce_source_id, adapter_debounce_source_id
+            if debounce_source_id is not None:
+                GLib.source_remove(debounce_source_id)
+                debounce_source_id = None
+            if adapter_debounce_source_id is not None:
+                GLib.source_remove(adapter_debounce_source_id)
+                adapter_debounce_source_id = None
+
+            def wakeup_connect():
+                global sleep_wake_pending, connect_in_progress
+                sleep_wake_pending = False
+                connect_in_progress = False  # 唤醒时强制重置连接状态
+                if verbose:
+                    print('sleep/wake protection ended, connecting devices...', flush=True)
+                connect_devices_for_all_adapters()
+                return False
+
+            # 唤醒后延迟足够时间再连接，给适配器完全恢复
+            GLib.timeout_add(SLEEP_WAKE_DEBOUNCE_MS, wakeup_connect)
+
+
+def usage():
+    print('\n'.join([
+        f'Usage: {SCRIPT_NAME} [OPTIONS]...',
+        f'',
+        f'Automatically connect to trusted bluetooth devices',
+        f'',
+        f'OPTIONS:',
+        f'  -d, --daemon      Monitor bluetooth adapters and automatically connect to',
+        f'                    trusted devices when an adapter is powered on',
+        f'  -h, --help        Print this help message',
+        f'  -v, --verbose     Show more detailed log messages',
+        f'',
+    ]), flush=True)
+    sys.exit(0)
+
+
+def main():
+    global daemon
+    global verbose
+
+    # Parse command line arguments
+    try:
+        opts, cmds = getopt.getopt(sys.argv[1:], 'dhv', ['daemon', 'help', 'verbose'])
+    except getopt.GetoptError as e:
+        print(f'{SCRIPT_NAME}:', e, file=sys.stderr, flush=True)
+        print(f"Try '{SCRIPT_NAME} --help' for more information", file=sys.stderr, flush=True)
+        sys.exit(1)
+
+    # Process options (e.g. -h, --verbose)
+    for o, v in opts:
+        if o in ('-d', '--daemon'):
+            daemon = True
+        elif o in ('-h', '--help'):
+            usage()
+        elif o in ('-v', '--verbose'):
+            verbose = True
+        else:
+            # This shouldn't ever happen unless we forget to handle an
+            # option we've added
+            print(f'{SCRIPT_NAME}: internal error: unhandled option {o}', file=sys.stderr, flush=True)
+            sys.exit(1)
+
+    # Process commands
+    if len(cmds) > 0:
+        for c in cmds:
+            print(f"{SCRIPT_NAME}: command '{c}' not recognized", file=sys.stderr, flush=True)
+        print(f"Try '{SCRIPT_NAME} --help' for more information", file=sys.stderr, flush=True)
+        sys.exit(1)
+
+    # Set process name and title
+    try:
+        import prctl
+        if verbose:
+            print(f'setting process name to \'{SCRIPT_NAME}\'', flush=True)
+        prctl.set_name(SCRIPT_NAME)
+        prctl.set_proctitle(' '.join(sys.argv))
+    except ImportError:
+        if verbose:
+            print(f'failed to load module \'prctl\'', flush=True)
+            print(f'process name not set', flush=True)
+
+    if daemon:
+        # Listen for changes on the BlueZ dbus interface
+        bus.add_signal_receiver(
+                properties_changed_handler,
+                signal_name='PropertiesChanged',
+                dbus_interface='org.freedesktop.DBus.Properties',
+                bus_name='org.bluez',
+                path=None,
+                path_keyword='path')
+
+        # Listen for system sleep/wake signals
+        bus.add_signal_receiver(
+                handle_sleep,
+                'PrepareForSleep',
+                'org.freedesktop.login1.Manager',
+                'org.freedesktop.login1')
+
+        # Attempt to connect to devices on all existing adapters
+        connect_devices_for_all_adapters()
+
+        # ========== 开机信号丢失保护 ==========
+        # 启动后 3/6/10 秒各扫描一次，防止错过适配器上电信号
+        if verbose:
+            print('scheduling boot-time fallback scans at 3s, 6s, 10s...', flush=True)
+        GLib.timeout_add_seconds(3, lambda: connect_devices_for_all_adapters() or False)
+        GLib.timeout_add_seconds(6, lambda: connect_devices_for_all_adapters() or False)
+        GLib.timeout_add_seconds(10, lambda: connect_devices_for_all_adapters() or False)
+
+        # Start the mainloop
+        loop.run()
+    else:
+        # Attempt to connect to devices on all existing adapters
+        connect_devices_for_all_adapters()
+
+        # If we're waiting for connection attempts to finish, start the
+        # mainloop. We will automatically exit the loop once everything
+        # is finished
+        if len(pending_connections) > 0:
+            loop.run()
+
+
+def signal_handler(sig, frame):
+    if sig == signal.SIGHUP:
+        # Rescan adapters and attempt to connect to devices if we're in
+        # daemon mode
+        if daemon:
+            connect_devices_for_all_adapters()
+    elif sig in (signal.SIGINT, signal.SIGTERM):
+        # Gracefully exit
+        sys.exit(0)
+    else:
+        # This shouldn't ever happen unless we forget to handle a signal
+        # we've added
+        print(f'internal error: unhandled signal {sig}', file=sys.stderr, flush=True)
+        sys.exit(2)
+
+
+if __name__ == '__main__':
+    # Register signal handlers
+    signal.signal(signal.SIGHUP, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGUSR1, signal_handler)
+    signal.signal(signal.SIGUSR2, signal_handler)
+    signal.signal(signal.SIGALRM, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    # Connect to the system dbus
+    DBusGMainLoop(set_as_default=True)
+    bus = dbus.SystemBus()
+
+    # Initialize globals
+    daemon = False
+    verbose = False
+    pending_connections = set()
+    debounce_source_id = None
+    adapter_debounce_source_id = None
+    sleep_wake_pending = False
+    connect_in_progress = False
+
+    # Initialize the mainloop, but don't start it yet
+    loop = GLib.MainLoop()
+
+    main()
+
+
+# vim: ft=python ts=8 et sw=4 sts=4

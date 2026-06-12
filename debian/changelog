@@ -1,0 +1,89 @@
+ubuntu-cix-settings (16+ubuntu26.04ppa1+nmu1) resolute; urgency=medium
+
+  * add kernel cmdline to disable simpledrm
+  * blacklist npu driver
+
+ -- Jianfeng Liu <liujianfeng1994@gmail.com>  Fri, 12 Jun 2026 14:07:30 +0800
+
+ubuntu-cix-settings (16+ubuntu26.04ppa1) resolute; urgency=medium
+
+  * Prepare package metadata for Ubuntu 26.04 PPA testing.
+  * Avoid self-conflicts and hard failures in maintainer scripts.
+  * Use a systemd drop-in for the Bluetooth battery plugin option.
+
+ -- Clay Stan <claystan97@gmail.com>  Fri, 05 Jun 2026 02:22:27 -0400
+
+ubuntu-cix-settings (16) resolute; urgency=medium
+
+  * cix-ipbloq: Mark DMA1, HDA and DSP as reserved
+
+ -- Tobias Heider <tobias.heider@canonical.com>  Thu, 21 May 2026 12:02:40 +0200
+
+ubuntu-cix-settings (15) resolute; urgency=medium
+
+  * Remove armchina_npu blocklist, issue is now fixed in kernel
+
+ -- Tobias Heider <tobias.heider@canonical.com>  Tue, 19 May 2026 01:51:53 +0200
+
+ubuntu-cix-settings (14) resolute; urgency=medium
+
+  * Temporarily blocklist armchina_npu 
+  * Include pwm_sky1 and deps in initrd to fix deferred probe errors
+
+ -- Tobias Heider <tobias.heider@canonical.com>  Sun, 17 May 2026 23:46:32 +0200
+
+ubuntu-cix-settings (13) resolute; urgency=medium
+
+  * Add linlon and trilin modules to initramfs-tools for cdimage
+
+ -- Tobias Heider <tobias.heider@canonical.com>  Sun, 17 May 2026 14:40:41 +0200
+
+ubuntu-cix-settings (11) resolute; urgency=medium
+
+  * grub.d: add acpi=on
+
+ -- Tobias Heider <tobias.heider@canonical.com>  Sat, 16 May 2026 21:30:11 +0200
+
+ubuntu-cix-settings (10) resolute; urgency=medium
+
+  * Add cix-vpu-firmware dependency
+
+ -- Tobias Heider <tobias.heider@canonical.com>  Thu, 07 May 2026 09:20:14 +0200
+
+ubuntu-cix-settings (9) resolute; urgency=medium
+
+  * 7.0 kernel only needs clk_ignore_unused
+
+ -- Tobias Heider <tobias.heider@canonical.com>  Sat, 25 Apr 2026 22:47:56 +0200
+
+ubuntu-cix-settings (8) resolute; urgency=medium
+
+  * Drop efi=noruntime option
+
+ -- Tobias Heider <tobias.heider@canonical.com>  Tue, 03 Mar 2026 23:14:03 +0100
+
+ubuntu-cix-settings (7) questing; urgency=medium
+
+  * Add cdns3 and cdns3_pci_wrap modules to initrd for USB C support
+
+ -- Tobias Heider <tobias.heider@canonical.com>  Tue, 03 Mar 2026 00:14:37 +0100
+
+ubuntu-cix-settings (6) questing; urgency=medium
+
+  * Add back dracut config, disable linlon_dp render nodes
+
+ -- Tobias Heider <tobias.heider@canonical.com>  Mon, 02 Mar 2026 02:14:33 +0100
+
+ubuntu-cix-settings (5) questing; urgency=medium
+
+  * Drop the dracut config. We don't seem to need it.
+
+ -- Tobias Heider <tobias.heider@canonical.com>  Sat, 28 Feb 2026 23:25:17 +0100
+
+ubuntu-cix-settings (4) questing; urgency=medium
+
+  * Initial package
+    - Add CIX P1 kernel cmdline
+    - Include linlin_dp in dracut
+
+ -- Tobias Heider <tobias.heider@canonical.com>  Fri, 20 Feb 2026 00:00:06 +0100

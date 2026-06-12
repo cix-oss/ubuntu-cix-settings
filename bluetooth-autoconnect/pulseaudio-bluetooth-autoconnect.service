@@ -1,0 +1,13 @@
+[Unit]
+Description=Bluetooth autoconnect service for PipeWire/PulseAudio
+Documentation=man:bluetooth-autoconnect(1)
+After=pipewire.service pipewire-pulse.service wireplumber.service
+Wants=pipewire.service pipewire-pulse.service wireplumber.service
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 3
+ExecStart=/usr/bin/bluetooth-autoconnect
+
+[Install]
+WantedBy=default.target

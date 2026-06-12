@@ -1,0 +1,23 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+# systemd-sleep hook installed by linux-image-*.deb on CIX Sky1 / Orion O6.
+#
+# Switch PCIe ASPM policy around suspend:
+#   - pre  suspend: "default"        (kernel-picked per-link defaults)
+#   - post suspend: "powersupersave" (aggressive L1.x for idle power)
+#
+# systemd-logind invokes /lib/systemd/system-sleep/* with $1=pre|post
+# and $2=suspend|hibernate|hybrid-sleep|suspend-then-hibernate.
+
+POLICY=/sys/module/pcie_aspm/parameters/policy
+
+[ -w "$POLICY" ] || exit 0
+
+case "$1/$2" in
+	pre/suspend|pre/hibernate|pre/hybrid-sleep|pre/suspend-then-hibernate)
+		echo default > "$POLICY"
+		;;
+	post/suspend|post/hibernate|post/hybrid-sleep|post/suspend-then-hibernate)
+		echo powersupersave > "$POLICY"
+		;;
+esac

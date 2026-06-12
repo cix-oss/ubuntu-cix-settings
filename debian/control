@@ -1,0 +1,30 @@
+Source: ubuntu-cix-settings
+Section: misc
+Priority: optional
+Maintainer: Tobias Heider <tobias.heider@canonical.com>
+Build-Depends:
+ debhelper-compat (= 13)
+Rules-Requires-Root: binary-targets
+Standards-Version: 4.7.4
+Vcs-Browser: https://git.launchpad.net/~ubuntu-concept/ubuntu/+source/ubuntu-cix-settings
+Vcs-Git: https://git.launchpad.net/~ubuntu-concept/ubuntu/+source/ubuntu-cix-settings
+
+Package: ubuntu-cix-p1-settings
+Architecture: arm64
+Depends: ${misc:Depends}, cix-vpu-firmware
+Description: Default settings for Ubuntu on CIX P1 machines
+ This package contains some default settings that are specific to Ubuntu
+ running on CIX P1 machines.
+
+Package: ubuntu-cix-p1-settings-oem
+Architecture: arm64
+Depends:
+ ${misc:Depends},
+ bluez,
+ python3,
+ python3-dbus,
+ python3-gi,
+ systemd
+Description: Default settings for Ubuntu on CIX P1 OEM machines
+ This package contains some default settings that are specific to Ubuntu
+ running on CIX P1 OEM machines.

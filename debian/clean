@@ -1,0 +1,8 @@
+debian/.debhelper/
+debian/debhelper-build-stamp
+debian/files
+debian/ubuntu-cix-p1-settings/
+debian/ubuntu-cix-p1-settings-oem/
+debian/ubuntu-cix-p1-settings.substvars
+debian/ubuntu-cix-p1-settings-oem.substvars
+debian/*.debhelper
