@@ -1,6 +1,6 @@
 [config]
-model = "qwen3.7-plus"
-fallback_models = ["qwen3.7-plus"]
+model = "openai/qwen3.7-plus"
+fallback_models = ["openai/qwen3.7-plus"]
 custom_model_max_tokens = 131072
 
 [openai]
