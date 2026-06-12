@@ -13,6 +13,9 @@ jobs:
     container:
       image: ubuntu:26.04
 
+    env:
+      DEBIAN_FRONTEND: noninteractive
+
     steps:
       - uses: actions/checkout@v4
 
@@ -20,7 +23,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            dpkg-dev debhelper lintian
+            build-essential dpkg-dev debhelper lintian
 
       - name: Build package
         run: dpkg-buildpackage -us -uc -b
