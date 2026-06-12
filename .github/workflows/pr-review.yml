@@ -18,7 +18,7 @@ jobs:
         env:
           OPENAI_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
           OPENAI_API_BASE: "https://coding.dashscope.aliyuncs.com/v1"
-          MODEL: "qwen3.7-plus"
+          MODEL: "openai/qwen3.7-plus"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
@@ -27,5 +27,6 @@ jobs:
             -e OPENAI.API_BASE="$OPENAI_API_BASE" \
             -e CONFIG.MODEL="$MODEL" \
             -e GITHUB.USER_TOKEN="$GITHUB_TOKEN" \
+            -v "$PWD/.pr_agent.toml:/app/pr_agent/settings/.pr_agent.toml:ro" \
             pragent/pr-agent:latest \
             --pr_url "$PR_URL" review
