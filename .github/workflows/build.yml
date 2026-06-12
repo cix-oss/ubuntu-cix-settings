@@ -38,7 +38,8 @@ jobs:
           find .. -maxdepth 1 -name '*.deb' -exec cp {} output/ \;
 
       - name: Run lintian
-        run: lintian --info --display-level warning output/*.deb || true
+        run: lintian --info --display-level warning output/*.deb
+        continue-on-error: true
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
