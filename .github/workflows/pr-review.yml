@@ -11,25 +11,5 @@ permissions:
 
 jobs:
   review:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run PR Agent
-        env:
-          OPENAI__KEY: ${{ secrets.DASHSCOPE_API_KEY }}
-          OPENAI__API_BASE: "https://coding.dashscope.aliyuncs.com/v1"
-          CONFIG__MODEL: "openai/qwen3.7-plus"
-          CONFIG__FALLBACK_MODELS: '["openai/qwen3.7-plus"]'
-          CONFIG__CUSTOM_MODEL_MAX_TOKENS: "131072"
-          GITHUB__USER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-        run: |
-          docker run --rm \
-            -e OPENAI__KEY \
-            -e OPENAI__API_BASE \
-            -e CONFIG__MODEL \
-            -e CONFIG__FALLBACK_MODELS \
-            -e CONFIG__CUSTOM_MODEL_MAX_TOKENS \
-            -e GITHUB__USER_TOKEN \
-            pragent/pr-agent:latest \
-            --pr_url "$PR_URL" review
+    uses: cix-oss/.github/.github/workflows/ai-pr-review.yml@master
+    secrets: inherit
