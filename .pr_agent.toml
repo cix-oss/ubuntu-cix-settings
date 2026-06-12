@@ -1,0 +1,93 @@
+[pr_reviewer]
+extra_instructions = """
+This repository is part of the CIX OSS publication workflow. Treat AI review as
+advisory only: provide concrete suggestions, but do not imply that AI review is
+a merge gate. Build, lint, sbuild, autopkgtest, and human review remain the
+authoritative gates.
+
+Review both source behavior and repository integration. Start from what the
+changed source files do, then verify that build scripts, CI, and Debian
+packaging, when present, build, install, enable, test, and remove that behavior
+correctly.
+
+For source code changes, prioritize actionable issues:
+- Review C, C++, Rust, Python, shell, Makefile, Meson, CMake, systemd, and
+  configuration changes according to the language and subsystem actually
+  changed. Include files without language extensions when their content is
+  executable or parsed by system tools.
+- Check correctness, error handling, boundary cases, resource lifetime,
+  concurrency, cleanup paths, ABI/API compatibility, data validation, logging,
+  observability, and whether behavior matches the stated hardware or OS target.
+- For shell scripts, check POSIX or bash assumptions, set -e behavior, quoting,
+  globbing, word splitting, command availability, exit status handling,
+  idempotency, temporary files, permissions, and compatibility with the target
+  Debian/Ubuntu userland.
+- For Python or other interpreted code, check dependency declarations,
+  interpreter version assumptions, exception handling, DBus/systemd/file-system
+  interactions, subprocess usage, and whether failures are reported clearly.
+- For kernel modules, DKMS packages, drivers, firmware loaders, or hardware
+  enablement code, check kernel-version compatibility, module parameters,
+  install/remove/update flows, firmware paths, secure boot implications,
+  initramfs integration, and failure modes on unsupported hardware.
+- For public source releases, check that internal-only files, generated
+  artifacts, credentials, private infrastructure details, machine-local paths,
+  vendor build shortcuts, and cross-build assumptions are not introduced.
+
+For runtime integration changes, prioritize actionable issues:
+- Review systemd units and drop-ins for correct dependencies, ordering,
+  service type, restart behavior, install targets, sandboxing opportunities,
+  and behavior during boot, shutdown, suspend, resume, upgrade, and package
+  removal.
+- Review grub, modprobe, initramfs-tools, dracut, environment.d, sleep hooks,
+  and udev-like configuration for syntax, ordering, duplicate/conflicting
+  settings, rollback behavior, and whether the change can affect non-CIX or
+  unsupported hardware.
+- Review security and reliability of runtime behavior: avoid unsafe writable
+  paths, unnecessary privilege, leaking environment or credentials, brittle
+  absolute paths, unbounded waits, races with hardware or services, and changes
+  that can make boot, networking, Bluetooth, PCIe, display, or initramfs
+  recovery fail.
+- Check that runtime dependencies used by scripts and services are declared,
+  installed, or guarded as optional.
+- If a change depends on CIX hardware behavior that cannot be proven from the
+  diff, label it as a hardware validation concern rather than a definite bug.
+
+For build system and CI changes, prioritize actionable issues:
+- Check that the documented build path still works from a clean checkout and
+  does not depend on local state from /home/claystan/cix-repo unless explicitly
+  documented as an import source.
+- Check GitHub Actions permissions, secret exposure, runner labels, artifact
+  upload paths, cache usage, matrix targets, and whether failures are allowed
+  only for advisory checks.
+- For CIX package repositories, prefer native Debian tooling such as
+  devscripts, git-buildpackage, lintian, debhelper, sbuild, and autopkgtest
+  where they fit the job.
+
+For Debian packaging changes, apply these checks when a debian/ directory is
+present:
+- Check Debian Policy and debhelper compatibility in debian/control,
+  debian/rules, debian/changelog, debian/copyright, debian/source/*, and
+  maintainer scripts.
+- Check package metadata carefully: source and binary package names,
+  Architecture arm64, dependencies, Maintainer and Uploaders, Vcs fields,
+  Standards-Version, native package versioning, and the changelog target
+  distribution.
+- Preserve the original Maintainer unless ownership is intentionally changed;
+  CIX maintainers should normally be added under Uploaders.
+- Check maintainer script safety: POSIX shell compatibility, set -e behavior,
+  idempotency across install/upgrade/remove/purge, and graceful handling when
+  optional commands, files, or services are absent.
+- Check installed file layout and ownership: conffiles, systemd units and
+  drop-ins, initramfs-tools or dracut snippets, modprobe files, grub snippets,
+  environment.d files, system-sleep hooks, manpages, and matching
+  debian/*.install entries.
+- Check build and release expectations: changes should remain buildable with
+  dpkg-buildpackage. For Ubuntu 26.04 packages, expect native arm64 validation
+  with sbuild -d resolute. For Debian 13 packages, expect native arm64
+  validation with sbuild -d trixie. Mention lintian or autopkgtest only when
+  the PR changes something those tools can validate.
+
+Avoid generic style comments and broad refactoring suggestions. Only report
+issues that are concrete, reproducible from the diff, and actionable. Prefer
+fewer high-signal findings over broad commentary.
+"""
