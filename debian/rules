@@ -1,26 +1,7 @@
 #!/usr/bin/make -f
 
 clean:
-	dh clean || true
-	rm -rf debian/.debhelper \
-		debian/debhelper-build-stamp \
-		debian/files \
-		debian/ubuntu-cix-p1-settings \
-		debian/ubuntu-cix-p1-settings-oem \
-		debian/ubuntu-cix-p1-settings.substvars \
-		debian/ubuntu-cix-p1-settings-oem.substvars \
-		debian/*.debhelper
+	dh_clean
 
 %:
 	dh $@
-
-override_dh_clean:
-	dh_clean || true
-	rm -rf debian/.debhelper \
-		debian/debhelper-build-stamp \
-		debian/files \
-		debian/ubuntu-cix-p1-settings \
-		debian/ubuntu-cix-p1-settings-oem \
-		debian/ubuntu-cix-p1-settings.substvars \
-		debian/ubuntu-cix-p1-settings-oem.substvars \
-		debian/*.debhelper

@@ -1,9 +1,15 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: ubuntu-cix-settings
-Source: https://git.launchpad.net/~ubuntu-concept/ubuntu/+source/ubuntu-cix-settings
+Source: https://github.com/cix-oss/ubuntu-cix-settings
 
 Files: *
 Copyright: 2026 Canonical Ltd.
+License: GPL-2+
+
+Files: debian/*
+Copyright: 2026 Clay Stan <claystan97@gmail.com>
+License: GPL-2+
+
 License: GPL-2+
  This program is free software: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by

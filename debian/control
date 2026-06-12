@@ -1,13 +1,14 @@
 Source: ubuntu-cix-settings
 Section: misc
-Priority: optional
 Maintainer: Tobias Heider <tobias.heider@canonical.com>
+Uploaders:
+ Clay Stan <claystan97@gmail.com>,
+ Jianfeng Liu <liujianfeng1994@gmail.com>
 Build-Depends:
  debhelper-compat (= 13)
-Rules-Requires-Root: binary-targets
-Standards-Version: 4.7.4
-Vcs-Browser: https://git.launchpad.net/~ubuntu-concept/ubuntu/+source/ubuntu-cix-settings
-Vcs-Git: https://git.launchpad.net/~ubuntu-concept/ubuntu/+source/ubuntu-cix-settings
+Standards-Version: 4.7.3
+Vcs-Browser: https://github.com/cix-oss/ubuntu-cix-settings
+Vcs-Git: https://github.com/cix-oss/ubuntu-cix-settings.git
 
 Package: ubuntu-cix-p1-settings
 Architecture: arm64

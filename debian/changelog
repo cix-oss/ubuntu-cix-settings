@@ -1,3 +1,14 @@
+ubuntu-cix-settings (17.0.0) resolute; urgency=medium
+
+  * Add cix-oss uploader and Vcs metadata.
+  * Drop redundant Priority and Rules-Requires-Root fields.
+  * Set Standards-Version to the policy baseline checked by resolute lintian.
+  * Use dh_clean for the clean target without hiding errors.
+  * Keep generated cross-build artifacts in debian/clean.
+  * Use command -v in maintainer scripts.
+
+ -- Clay Stan <claystan97@gmail.com>  Fri, 12 Jun 2026 05:32:56 -0400
+
 ubuntu-cix-settings (16+ubuntu26.04ppa1+nmu1) resolute; urgency=medium
 
   * add kernel cmdline to disable simpledrm
@@ -27,7 +38,7 @@ ubuntu-cix-settings (15) resolute; urgency=medium
 
 ubuntu-cix-settings (14) resolute; urgency=medium
 
-  * Temporarily blocklist armchina_npu 
+  * Temporarily blocklist armchina_npu
   * Include pwm_sky1 and deps in initrd to fix deferred probe errors
 
  -- Tobias Heider <tobias.heider@canonical.com>  Sun, 17 May 2026 23:46:32 +0200
