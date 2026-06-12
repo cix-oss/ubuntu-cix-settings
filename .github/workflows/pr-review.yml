@@ -13,8 +13,15 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: the-pr-agent/pr-agent@main
+      - name: PR Agent Review
+        uses: docker://pragent/pr-agent:latest
         env:
           OPENAI_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          OPENAI_API_BASE: "https://coding.dashscope.aliyuncs.com/v1"
+          CONFIG.MODEL: "qwen3.7-plus"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          github_action_config.auto_review: "true"
+          github_action_config.auto_describe: "false"
+          github_action_config.auto_improve: "false"
+        with:
+          args: "review"
